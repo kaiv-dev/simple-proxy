@@ -44,20 +44,18 @@ List of services. Current version has http and dir entries.
 If request will not match any of rules - 404 Not Found will be returned.
 If upstream is unaccessible - 502 Bad Gateway will be returned.
 ```toml
-
-# dir will serve files in dir
-# It will not show dir at /, only direct file paths.
-# If file not found - 404 will be returned
-# dirs are matching before http, so if domain is same with http record and beginning of route match dir - dir will be served instead of proxying to http upstream even if file will not found
+# Serves static files from a directory.
+# Only direct file paths are accessible (no directory listing).
+# If file not found → 404 is returned.
+# Directory rules are matched before HTTP rules:
+# If domain + route matches a dir, it will serve files instead of proxying.
 [[dir]]
 domain = "files.example.com"
 route  = "/files"                 # Route prefix to match
 listen = "127.0.0.1:4000"         # Local address for Axum file service
 path   = "/static"                # Absolute or relative path to serve
 
-
-
-# http will proxy requests with domain in header to upstream.
+# Proxies HTTP requests for the given domain to an upstream server.
 [[http]]
 domain = "app.example.com"
 https  = false                    # Optional, default = false (⚠️ experimental)
