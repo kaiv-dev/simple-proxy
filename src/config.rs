@@ -18,7 +18,7 @@ pub struct TcpRecord {
 pub struct HttpRecord {
     pub domain: String,
     pub upstream: String,
-    pub https: bool,
+    pub https: Option<bool>,
     pub proxy_ports_from_prefix: Option<Vec<u16>>,
 }
 
@@ -101,7 +101,7 @@ impl ConfigRecord {
             http: HttpConfig(
                 self.http.into_iter().filter_map(|v| {
                     let HttpRecord {domain, upstream, https, proxy_ports_from_prefix, ..} = v;
-                    Some((domain, HttpParsedRecord::try_parse(upstream, https, proxy_ports_from_prefix)?))
+                    Some((domain, HttpParsedRecord::try_parse(upstream, https.unwrap_or(false), proxy_ports_from_prefix)?))
                 }).collect()
             ),
             dir: DirConfig::from_record(self.dir)

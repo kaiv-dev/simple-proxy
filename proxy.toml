@@ -1,25 +1,13 @@
+[[dir]]
+domain = "files.example.com"
+route  = "/files"                 # Route prefix to match
+listen = "127.0.0.1:4000"         # Local address for Axum file service
+path   = "/static"                # Absolute or relative path to serve
 
-
+# http will proxy requests with domain in header to upstream.
 [[http]]
-domain = "island.kaiv.dev"
+domain = "app.example.com"
+https  = false                    # Optional, default = false (⚠️ experimental)
 upstream = "127.0.0.1:3000"
-https = false
-
-[[dir]]
-domain = "island.kaiv.dev"
-route = "/petya"
-listen = "127.0.0.1:4000"
-path = "R:\\TEMP\\petya"
-
-[[dir]]
-domain = "island.kaiv.dev"
-route = "/pasha"
-listen = "127.0.0.1:4000"
-path = "R:\\TEMP\\pasha"
-
-[[http]]
-domain = "vesper.kaiv.dev"
-upstream = "127.0.0.1:1" # port will be replaced if proxy_ports_from_prefix is set
-proxy_ports_from_prefix = [3000]
-https = false
+proxy_ports_from_prefix = [3000] 
 
