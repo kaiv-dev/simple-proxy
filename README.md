@@ -61,6 +61,8 @@ path   = "/static"                # Absolute or relative path to serve
 # Proxies HTTP requests for the given domain to an upstream server.
 [[http]]
 domain = "app.example.com"
+routes = ["/abc"]                 # Optional, redirect only if route is match. If unset - everything will be redirected.
+strip_route = false               # Optional, default = false
 https  = false                    # Optional, default = false (⚠️ experimental, untested)
 upstream = "127.0.0.1:1"
 proxy_ports_from_prefix = [3000]  # Optional list of ports to forward from first entry of path from route

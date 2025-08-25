@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use http::Uri;
 use pingora::{prelude::*};
-use std::{borrow::Cow, fmt::Display, sync::{Arc, RwLock}};
+use std::sync::{Arc, RwLock};
 use tracing::{info, Level, Span};
 use tracing::span;
 use uuid::Uuid;
@@ -66,6 +66,8 @@ impl HttpGateway {
             let mut addr = cfg.addr.clone();
             if let Some(pq) = pq {
                 let mut pq = pq.to_string();
+
+                // check ports
                 if let Some(allowed_ports) = &cfg.proxy_ports_from_prefix {
                     let mut it = pq.splitn(3, '/');
                     let _empty = it.next().unwrap_or("");
@@ -82,11 +84,31 @@ impl HttpGateway {
                     addr.set_port(port);
                     pq = format!("/{}", rest);
                 }
+                // check routes
+                if cfg.routes.len() > 0 {
+                    let mut passed = false;
+                    for route in cfg.routes.iter() {
+                        if pq.starts_with(route) {
+                            if cfg.strip_route {
+                                pq = pq.replacen(route, "", 1);
+                            }
+                            passed = true;
+                            break;
+                        }
+                    }
+                    if !passed {
+                        info!("Route mismatch! Skipping...");
+                        return Ok(None)
+                    }
+                }
                 uri = uri.path_and_query(pq);
             } else {
                 if cfg.proxy_ports_from_prefix.is_some() {
                     info!("No path on route that must have port prefix! Skipping...");
                     return Ok(None)
+                }
+                if cfg.routes.len() > 0 {
+
                 }
             }
             uri = uri.authority(addr.to_string());

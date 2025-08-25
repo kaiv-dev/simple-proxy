@@ -18,12 +18,20 @@ pub struct TcpRecord {
 pub struct HttpRecord {
     pub domain: String,
     pub upstream: String,
+    pub routes: Option<Vec<String>>,
     pub https: Option<bool>,
     pub proxy_ports_from_prefix: Option<Vec<u16>>,
+    pub strip_route: Option<bool>,
 }
 
 impl HttpParsedRecord {
-    fn try_parse(upstream: String, https: bool, proxy_ports_from_prefix: Option<Vec<u16>>) -> Option<Self> {
+    fn try_parse(
+        upstream: String, 
+        https: bool, 
+        proxy_ports_from_prefix: Option<Vec<u16>>, 
+        routes: Option<Vec<String>>,
+        strip_route: Option<bool>,
+    ) -> Option<Self> {
         let Ok(authority) = upstream.parse() else {
             warn!("Can't parse upstream to authority: {}, skipping", upstream);
             return None;
@@ -35,6 +43,12 @@ impl HttpParsedRecord {
         Some(HttpParsedRecord {
             upstream: authority,
             addr,
+            strip_route: strip_route.unwrap_or(false),
+            routes: routes
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|r| !(r.is_empty() || r == "/"))
+                        .collect(),
             https,
             proxy_ports_from_prefix, 
         })
@@ -42,14 +56,14 @@ impl HttpParsedRecord {
 }
 
 
-
-
-
 #[derive(Clone, Debug)]
 pub struct HttpParsedRecord {
+    #[allow(unused)]
     pub upstream: Authority,
     pub addr: SocketAddr,
+    pub routes: Vec<String>,
     pub https: bool,
+    pub strip_route: bool,
     pub proxy_ports_from_prefix: Option<Vec<u16>>,
 }
 
@@ -100,8 +114,22 @@ impl ConfigRecord {
             tcp: TcpConfig(parsed_tcp),
             http: HttpConfig(
                 self.http.into_iter().filter_map(|v| {
-                    let HttpRecord {domain, upstream, https, proxy_ports_from_prefix, ..} = v;
-                    Some((domain, HttpParsedRecord::try_parse(upstream, https.unwrap_or(false), proxy_ports_from_prefix)?))
+                    let HttpRecord {
+                        domain, 
+                        upstream, 
+                        https, 
+                        proxy_ports_from_prefix,
+                        routes,
+                        strip_route,
+                        ..
+                    } = v;
+                    Some((domain, HttpParsedRecord::try_parse(
+                        upstream, 
+                        https.unwrap_or(false), 
+                        proxy_ports_from_prefix,
+                        routes,
+                        strip_route,
+                    )?))
                 }).collect()
             ),
             dir: DirConfig::from_record(self.dir)

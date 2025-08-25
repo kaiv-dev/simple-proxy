@@ -1,5 +1,20 @@
-[[http]]
-domain = "vesper.kaiv.dev"
-upstream = "127.0.0.1:1"
-proxy_ports_from_prefix = [3000]
+# Serves static files from a directory.
+# Only direct file paths are accessible (no directory listing).
+# If file not found → 404 is returned.
+# Directory rules are matched before HTTP rules:
+# If domain + route matches a dir, it will serve files instead of proxying.
+[[dir]]
+domain = "files.example.com"
+route  = "/files"                 # Route prefix to match
+listen = "127.0.0.1:4000"         # Local address for Axum file service
+path   = "/static"                # Absolute or relative path to serve
 
+# Proxies HTTP requests for the given domain to an upstream server.
+[[http]]
+domain = "app.example.com"
+routes = ["/abc"]                 # Optional, redirect only if route is match. If unset - everything will be redirected.
+strip_route = false               # Optional, default = false
+https  = false                    # Optional, default = false (⚠️ experimental, untested)
+upstream = "127.0.0.1:1"
+proxy_ports_from_prefix = [3000]  # Optional list of ports to forward from first entry of path from route
+                                  # For example, app.example.com/3000/abc?q=v will be redirected to 127.0.0.1:3000/abc?q=v
