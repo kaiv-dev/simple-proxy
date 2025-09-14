@@ -26,8 +26,6 @@ env_config!(
 );
 
 
-
-
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     CryptoProvider::install_default(default_provider()).ok();
@@ -49,6 +47,7 @@ fn main() -> anyhow::Result<()> {
 
     let config = load_config(&CFG.CONFIG_PATH)?;
     let shared_config: Arc<RwLock<RouteConfig>> = Arc::new(RwLock::new(config.clone()));
+    
     // for (port, record) in config.tcp.0.into_iter() {
     //     // let mut service = http_proxy_service(&server.configuration, TcpGateway{record, config: todo!() });
     //     // service.add_tcp(&format!("0.0.0.0:{}", port));
@@ -72,8 +71,6 @@ fn main() -> anyhow::Result<()> {
             });
         }
     });
-
-
 
     let mut proxy = http_proxy_service(&server.configuration, HttpGateway{config: Arc::clone(&shared_config)});
     let cert_path = format!("{}/fullchain.pem", CFG.CERT_PATH);
