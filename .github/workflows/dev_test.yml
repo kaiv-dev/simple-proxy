@@ -1,4 +1,6 @@
 name: Simple proxy - workflow test
+env:
+  SHARED_CACHE: /mnt/shared
 
 on:
   push:
@@ -22,15 +24,20 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
+        with:
+          driver-opts: |
+            image=moby/buildkit:rootless
+            network=host
+          buildkitd-flags: --allow-insecure-entitlement security.insecure
       - name: Build and push dev image
         uses: docker/build-push-action@v5
-        
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/kaiva-morphin/simple-proxy:dev
+          cache-from: type=local,src=${{env.SHARED_CACHE}}
+          cache-to: type=local,dest=${{env.SHARED_CACHE}},mode=max
+
