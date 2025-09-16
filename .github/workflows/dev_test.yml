@@ -33,6 +33,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/kaiv-dev/simple-proxy:dev
-          cache-from: type=local,src=${{env.SHARED_CACHE}}
-          cache-to: type=local,dest=${{env.SHARED_CACHE}},mode=max
+          cache-from: type=local,src=${{env.SHARED_CACHE}}/simple_proxy
+          cache-to: type=local,dest=${{env.SHARED_CACHE}}/simple_proxy,mode=max,ignore-error=true
 
