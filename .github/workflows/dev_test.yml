@@ -32,7 +32,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/kaiva-morphin/simple-proxy:dev
+          tags: ghcr.io/kaiv-dev/simple-proxy:dev
           cache-from: type=local,src=${{env.SHARED_CACHE}}
           cache-to: type=local,dest=${{env.SHARED_CACHE}},mode=max
 
