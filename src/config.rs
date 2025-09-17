@@ -1,9 +1,10 @@
 use std::{collections::HashMap, path::PathBuf};
 
+use hickory_resolver::{Resolver, TokioResolver, name_server::GenericConnector, proto::runtime::TokioRuntimeProvider};
 use http::{uri::Authority};
 use pingora::protocols::l4::socket::SocketAddr;
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{info, warn};
 use crate::wrap;
 
 
@@ -24,22 +25,59 @@ pub struct HttpRecord {
     pub strip_route: Option<bool>,
 }
 
+
+
 impl HttpParsedRecord {
-    fn try_parse(
+    async fn try_parse(
+        resolver: &Option<Resolver<GenericConnector<TokioRuntimeProvider>>>,
         upstream: String, 
         https: bool, 
         proxy_ports_from_prefix: Option<Vec<u16>>, 
         routes: Option<Vec<String>>,
         strip_route: Option<bool>,
     ) -> Option<Self> {
-        let Ok(authority) = upstream.parse() else {
+        let Ok(mut authority) = upstream.parse() else {
             warn!("Can't parse upstream to authority: {}, skipping", upstream);
             return None;
         };
-        let Ok(addr) = upstream.parse() else {
-            warn!("Can't parse upstream to socket: {}, skipping", upstream);
-            return None;
+        let maybe_addr = upstream.parse();
+        let addr = match maybe_addr {
+            Ok(addr) => addr,
+            Err(_) => {
+                let Some(resolver) = resolver else {
+                    warn!("Can't parse upstream to socket: {upstream}, skipping");  
+                    return None;
+                };
+                let Some((hostname, port)) = upstream.rsplit_once(":") else {
+                    warn!("Can't parse upstream to socket: {upstream}, skipping");
+                    return None;
+                };
+                let Ok(port) = port.parse() else {
+                    warn!("Can't parse port for {upstream}");
+                    return None;
+                };
+                info!("Resolving {}", hostname);
+                let ip = match resolver.lookup_ip(hostname).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("Failed to resolve ip addr for {hostname}: {e}");
+                        return None;
+                    }
+                };
+                let Some(addr) = ip.iter().next() else {
+                    warn!("Failed to resolve ip addr for 
+                    {hostname}");
+                    return None;
+                };
+                let addr = SocketAddr::Inet(std::net::SocketAddr::new(addr, port));
+                authority = addr.to_string().parse()
+                    .inspect_err(|_| warn!("Can't parse upstream to authority: {}, skipping", upstream))
+                    .ok()?;
+                info!("Resolved {upstream} to {addr}");
+                addr
+            }
         };
+        
         Some(HttpParsedRecord {
             upstream: authority,
             addr,
@@ -100,7 +138,13 @@ impl ConfigRecord {
         Ok(toml::from_str(&std::fs::read_to_string(path)?)?)
     }
 
-    pub fn to_route_config(self) -> RouteConfig {
+    pub async fn to_route_config(self) -> RouteConfig {
+        let resolver = TokioResolver::builder(
+            GenericConnector::new(TokioRuntimeProvider::default()))
+                    .map(|builder| builder.build());
+        let resolver = resolver.inspect_err(|e|warn!("Failed to create resolver: {e}")).ok();
+          
+
         let mut parsed_tcp = HashMap::new();
         for (k, v) in self.tcp {
             let Some(k) = k.parse().ok() else { warn!("Can't parse port from {k}! Skipping..."); continue };
@@ -110,28 +154,31 @@ impl ConfigRecord {
             }
             parsed_tcp.insert(k, inner);
         }
+        let mut http_records: HashMap<String, Vec<HttpParsedRecord>> = HashMap::new();
+        for record in self.http {
+            let HttpRecord {
+                domain, 
+                upstream, 
+                https, 
+                proxy_ports_from_prefix,
+                routes,
+                strip_route,
+                ..
+            } = record;
+            let parsed = HttpParsedRecord::try_parse(
+                &resolver,
+                upstream, 
+                https.unwrap_or(false), 
+                proxy_ports_from_prefix,
+                routes,
+                strip_route,
+            ).await;
+            let Some(parsed) = parsed else { continue };
+            http_records.entry(domain).or_default().push(parsed);
+        }
         RouteConfig {
             tcp: TcpConfig(parsed_tcp),
-            http: HttpConfig(
-                self.http.into_iter().filter_map(|v| {
-                    let HttpRecord {
-                        domain, 
-                        upstream, 
-                        https, 
-                        proxy_ports_from_prefix,
-                        routes,
-                        strip_route,
-                        ..
-                    } = v;
-                    Some((domain, HttpParsedRecord::try_parse(
-                        upstream, 
-                        https.unwrap_or(false), 
-                        proxy_ports_from_prefix,
-                        routes,
-                        strip_route,
-                    )?))
-                }).collect()
-            ),
+            http: HttpConfig(http_records),
             dir: DirConfig::from_record(self.dir)
         }
     }
@@ -147,7 +194,7 @@ pub struct RouteConfig {
 }
 
 wrap!(pub TcpConfig(pub HashMap<u16, HashMap<String, TcpRecord>>) = Default, Debug, Clone);
-wrap!(pub HttpConfig(pub HashMap<String, HttpParsedRecord>) = Default, Debug, Clone);
+wrap!(pub HttpConfig(pub HashMap<String, Vec<HttpParsedRecord>>) = Default, Debug, Clone);
 // wrap!(pub DirConfig(pub HashMap<String, Vec<DirParsedRecord>>) = Default, Debug, Clone);
 
 #[derive(Default, Debug, Clone)]

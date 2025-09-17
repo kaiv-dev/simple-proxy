@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use http::Uri;
 use pingora::{prelude::*};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tracing::{info, Level, Span};
 use tracing::span;
 use uuid::Uuid;
 use crate::config::RouteConfig;
 
 pub struct HttpGateway {
-    pub config: Arc<RwLock<RouteConfig>>,
+    pub config: Arc<RouteConfig>,
 }
 
 
@@ -37,10 +37,9 @@ impl HttpGateway {
             .and_then(|v| v.to_str().map(|v| v.to_string()).ok())
             .unwrap_or_default();
         info!("Requested host: {}", host);
-        let cfg = self.config.read().unwrap();
         let pq = session.req_header().uri.path_and_query();
         'a: {
-        if let Some(dirs) = cfg.dir.domain.get(&host) {
+        if let Some(dirs) = self.config.dir.domain.get(&host) {
             let Some(pq) = pq else {
                 info!("No path for served dir! Continuing to http...");
                 break 'a
@@ -61,7 +60,12 @@ impl HttpGateway {
         }
         }
 
-        if let Some(cfg) = cfg.http.get(&host) {
+        let Some(cfgs) = self.config.http.get(&host) else {
+            info!("No matching host found! Continuing to http...");
+            return Ok(None);
+        };
+        
+        for cfg in cfgs {
             let mut uri = Uri::builder().scheme(if cfg.https {"https"} else {"http"});
             let mut addr = cfg.addr.clone();
             if let Some(pq) = pq {
@@ -113,14 +117,12 @@ impl HttpGateway {
             }
             uri = uri.authority(addr.to_string());
             let uri = uri.build().map_err(|e| e.to_string())?;
-
             info!("Will be proxied to: {}", uri);
             session.req_header_mut().set_uri(uri);
-            Ok(Some(HttpPeer::new(addr, cfg.https, host)))
-        } else {
-            info!("Request doesn't match any rule! Skipping...");
-            Ok(None)
-        }
+            return Ok(Some(HttpPeer::new(addr, cfg.https, host)))
+        } 
+        info!("Request doesn't match any rule! Skipping...");
+        Ok(None)
     }
 }
 
@@ -142,6 +144,7 @@ impl ProxyHttp for HttpGateway
         _ctx: &mut Self::CTX,
     ) -> pingora::Result<Box<HttpPeer>> {
         let _s = _ctx.span.enter();
+        
         match self.handle_upstream_peer(session) {
             Ok(Some(p)) => Ok(Box::new(p)),
             Err(msg) => {
