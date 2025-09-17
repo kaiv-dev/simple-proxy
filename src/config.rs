@@ -143,7 +143,7 @@ impl ConfigRecord {
             GenericConnector::new(TokioRuntimeProvider::default()))
                     .map(|builder| builder.build());
         let resolver = resolver.inspect_err(|e|warn!("Failed to create resolver: {e}")).ok();
-          
+        if resolver.is_some(){info!("Resolver created!");}
 
         let mut parsed_tcp = HashMap::new();
         for (k, v) in self.tcp {
