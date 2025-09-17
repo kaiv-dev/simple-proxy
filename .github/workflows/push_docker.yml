@@ -1,14 +1,21 @@
-name: Simple proxy build and push docker image
+name: Build and push docker image
+
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+      shared_cache:
+        required: false
+        type: string
+        default: /mnt/shared
 
 env:
   SHARED_CACHE: /mnt/shared
   CARGO_TERM_COLOR: always
 
-on:
-  push:
-    branches:
-      - nightly
-      - master
 
 jobs:
   build-and-push-docker:
@@ -37,6 +44,6 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/kaiv-dev/simple_proxy:${{ github.event.inputs.channel || github.ref_name }}
-          cache-from: type=local,src=${{ env.SHARED_CACHE }}/${{ github.event.inputs.channel || github.ref_name }}
-          cache-to: type=local,dest=${{ env.SHARED_CACHE }}/${{ github.event.inputs.channel || github.ref_name }},mode=max
+          tags: ghcr.io/kaiv-dev/simple_proxy:${{ inputs.channel }}
+          cache-from: type=local,src=${{ inputs.shared_cache }}/${{ inputs.channel }}
+          cache-to: type=local,dest=${{ inputs.shared_cache }}/${{ inputs.channel }},mode=max
