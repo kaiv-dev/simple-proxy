@@ -79,11 +79,11 @@ impl HttpGateway {
                     let rest = it.collect::<Vec<&str>>().join("/");
                     let Ok(port) = port.parse::<u16>() else { 
                         info!("Can't parse port from {port}! Skipping...");
-                        return Ok(None)
+                        continue;
                     };
                     if !allowed_ports.contains(&port) {
                         info!("Port {port} is not allowed! Skipping...");
-                        return Ok(None)
+                        continue;
                     }
                     addr.set_port(port);
                     pq = format!("/{}", rest);
@@ -102,14 +102,14 @@ impl HttpGateway {
                     }
                     if !passed {
                         info!("Route mismatch! Skipping...");
-                        return Ok(None)
+                        continue;
                     }
                 }
                 uri = uri.path_and_query(pq);
             } else {
                 if cfg.proxy_ports_from_prefix.is_some() {
                     info!("No path on route that must have port prefix! Skipping...");
-                    return Ok(None)
+                    continue;
                 }
                 if cfg.routes.len() > 0 {
 
