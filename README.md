@@ -12,18 +12,31 @@ A lightweight reverse proxy and static file server written in Rust.
 
 ---
 
-Current configuration structure:
-
 ## Build and Run
+### Run in compose
+```yml
+services:
+  simple-proxy:
+    image: kaiv-dev/simple_proxy:latest
+    ports:
+      - "443:443"
+    volumes:
+      - "./certs:/app/certs"
+      - "./proxy.toml:/app/proxy.toml"
+    env_file:
+      - .env
+```
+
+### From source
 Install Rust and the required toolchain, then:
 
 ```sh
-git clone https://github.com/kaiva-morphin/simple-proxy.git
-cd simple-proxy
+git clone https://github.com/kaiv-dev/simple_proxy.git
+cd simple_proxy
 cargo build --release
 
 # Copy binary
-cp ./target/release/simple-proxy .
+cp ./target/release/simple_proxy .
 
 # Run
 ./simple-proxy
@@ -46,6 +59,7 @@ GRACEFUL_SHUTDOWN_TIMEOUT="18446744073709551615"    # Graceful shutdown timeout 
 List of services. Current version has http and dir entries. 
 If request will not match any of rules - 404 Not Found will be returned.
 If upstream is unaccessible - 502 Bad Gateway will be returned.
+Order of same domain rules matters!
 ```toml
 # Serves static files from a directory.
 # Only direct file paths are accessible (no directory listing).
