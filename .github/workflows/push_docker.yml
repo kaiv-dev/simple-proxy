@@ -1,6 +1,8 @@
 name: Simple proxy build and push docker image
+
 env:
   SHARED_CACHE: /mnt/shared
+  CARGO_TERM_COLOR: always
 
 on:
   push:
