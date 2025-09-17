@@ -23,5 +23,5 @@ RUN cargo build --release --locked
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
-COPY --from=builder /app/target/release/simple-proxy /app/simple-proxy
-ENTRYPOINT ["./simple-proxy"]
+COPY --from=builder /app/target/release/simple_proxy /app/simple_proxy
+ENTRYPOINT ["./simple_proxy"]
