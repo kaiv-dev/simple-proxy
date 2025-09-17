@@ -40,9 +40,9 @@ impl HttpParsedRecord {
             warn!("Can't parse upstream to authority: {}, skipping", upstream);
             return None;
         };
-        let maybe_addr = upstream.parse();
+        let maybe_addr = upstream.parse::<core::net::SocketAddr>();
         let addr = match maybe_addr {
-            Ok(addr) => addr,
+            Ok(addr) => SocketAddr::Inet(addr),
             Err(_) => {
                 let Some(resolver) = resolver else {
                     warn!("Can't parse upstream to socket: {upstream}, skipping");  
