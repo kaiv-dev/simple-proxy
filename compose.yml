@@ -1,0 +1,10 @@
+services:
+  simple-proxy:
+    build: .
+    ports:
+      - "443:443"
+    volumes:
+      - "./certs:/app/certs"
+      - "./proxy.toml:/app/proxy.toml"
+    env_file:
+      - .env

@@ -1,14 +1,14 @@
 use async_trait::async_trait;
 use http::Uri;
 use pingora::{prelude::*};
-use std::{sync::{Arc, RwLock}};
+use std::sync::Arc;
 use tracing::{info, Level, Span};
 use tracing::span;
 use uuid::Uuid;
 use crate::config::RouteConfig;
 
 pub struct HttpGateway {
-    pub config: Arc<RwLock<RouteConfig>>,
+    pub config: Arc<RouteConfig>,
 }
 
 
@@ -27,6 +27,103 @@ impl HttpGateway {
             cause: None
         })
     }
+
+    pub fn handle_upstream_peer(
+        &self,
+        session: &mut Session,
+    ) -> Result<Option<HttpPeer>, String> {
+        let host = session.req_header().headers.get("host").cloned();
+        let host = host
+            .and_then(|v| v.to_str().map(|v| v.to_string()).ok())
+            .unwrap_or_default();
+        info!("Requested host: {}", host);
+        let pq = session.req_header().uri.path_and_query();
+        'a: {
+        if let Some(dirs) = self.config.dir.domain.get(&host) {
+            let Some(pq) = pq else {
+                info!("No path for served dir! Continuing to http...");
+                break 'a
+            };
+            for dir in dirs.iter() {
+                if pq.path().starts_with(&dir.route) {
+                    let mut uri = Uri::builder()
+                        .authority(dir.listen.to_string())
+                        .scheme("http");
+                    info!("Uri: {:?}", uri);
+                    uri = uri.path_and_query(pq.clone());
+                    session.req_header_mut().set_uri(uri.build().unwrap());
+                    info!("Redirecting to dir {}", dir.listen);
+                    return Ok(Some(HttpPeer::new(dir.listen, false, host)));
+                }
+            }
+            info!("No matching dir found! Continuing to http...");
+        }
+        }
+
+        let Some(cfgs) = self.config.http.get(&host) else {
+            info!("No matching host found! Continuing to http...");
+            return Ok(None);
+        };
+        
+        for cfg in cfgs {
+            let mut uri = Uri::builder().scheme(if cfg.https {"https"} else {"http"});
+            let mut addr = cfg.addr.clone();
+            if let Some(pq) = pq {
+                let mut pq = pq.to_string();
+
+                // check ports
+                if let Some(allowed_ports) = &cfg.proxy_ports_from_prefix {
+                    let mut it = pq.splitn(3, '/');
+                    let _empty = it.next().unwrap_or("");
+                    let port = it.next().unwrap_or("");
+                    let rest = it.collect::<Vec<&str>>().join("/");
+                    let Ok(port) = port.parse::<u16>() else { 
+                        info!("Can't parse port from {port}! Skipping...");
+                        return Ok(None)
+                    };
+                    if !allowed_ports.contains(&port) {
+                        info!("Port {port} is not allowed! Skipping...");
+                        return Ok(None)
+                    }
+                    addr.set_port(port);
+                    pq = format!("/{}", rest);
+                }
+                // check routes
+                if cfg.routes.len() > 0 {
+                    let mut passed = false;
+                    for route in cfg.routes.iter() {
+                        if pq.starts_with(route) {
+                            if cfg.strip_route {
+                                pq = pq.replacen(route, "", 1);
+                            }
+                            passed = true;
+                            break;
+                        }
+                    }
+                    if !passed {
+                        info!("Route mismatch! Skipping...");
+                        return Ok(None)
+                    }
+                }
+                uri = uri.path_and_query(pq);
+            } else {
+                if cfg.proxy_ports_from_prefix.is_some() {
+                    info!("No path on route that must have port prefix! Skipping...");
+                    return Ok(None)
+                }
+                if cfg.routes.len() > 0 {
+
+                }
+            }
+            uri = uri.authority(addr.to_string());
+            let uri = uri.build().map_err(|e| e.to_string())?;
+            info!("Will be proxied to: {}", uri);
+            session.req_header_mut().set_uri(uri);
+            return Ok(Some(HttpPeer::new(addr, cfg.https, host)))
+        } 
+        info!("Request doesn't match any rule! Skipping...");
+        Ok(None)
+    }
 }
 
 #[async_trait]
@@ -40,65 +137,24 @@ impl ProxyHttp for HttpGateway
         Context{ span: Arc::new(span) }
     }
 
+
     async fn upstream_peer(
         &self,
         session: &mut Session,
         _ctx: &mut Self::CTX,
     ) -> pingora::Result<Box<HttpPeer>> {
         let _s = _ctx.span.enter();
-        let host = session.req_header().headers.get("host").cloned();
-        let host = host
-            .and_then(|v| v.to_str().map(|v| v.to_string()).ok())
-            .unwrap_or_default();
-        info!("Requested host: {}", host);
-        let cfg = self.config.read().unwrap();
-        let pq = session.req_header().uri.path_and_query();
-
-        'a: {
-        if let Some(dirs) = cfg.dir.domain.get(&host) {
-            let Some(pq) = pq else {break 'a};
-            for dir in dirs.iter() {
-                if pq.path().starts_with(&dir.route) {
-                    let mut uri = Uri::builder()
-                        .authority(dir.listen.to_string())
-                        .scheme("http");
-                    info!("Uri: {:?}", uri);
-                    uri = uri.path_and_query(pq.clone());
-                    session.req_header_mut().set_uri(uri.build().unwrap());
-                    return Ok(Box::new(HttpPeer::new(dir.listen, false, host)));
-                }
-            }
+        
+        match self.handle_upstream_peer(session) {
+            Ok(Some(p)) => Ok(Box::new(p)),
+            Err(msg) => {
+                tracing::error!("{}", msg);
+                Err(Self::default_err())
+            },
+            _ => Err(Self::default_err()),
         }
-        }
-
-        if let Some(cfg) = cfg.http.get(&host) {
-            let mut uri = Uri::builder()
-                .authority(cfg.upstream.clone())
-                .scheme(if cfg.https {"https"} else {"http"});
-            let mut addr = cfg.addr.clone();
-            if let Some(pq) = pq {
-                let mut pq = pq.to_string();
-                if let Some(allowed_ports) = &cfg.proxy_ports_from_prefix {
-                    let mut it = pq.splitn(3, '/');
-                    let _empty = it.next().unwrap_or("");
-                    let port = it.next().unwrap_or("");
-                    let rest = it.collect::<Vec<&str>>().join("/");
-                    let Ok(port) = port.parse::<u16>() else { return Err(Self::default_err()) };
-                    if !allowed_ports.contains(&port) { return Err(Self::default_err()) }
-                    addr.set_port(port);
-                    pq = format!("/{}", rest);
-                }
-                uri = uri.path_and_query(pq);
-            } else {
-                if cfg.proxy_ports_from_prefix.is_some() {
-                    return Err(Self::default_err())
-                }
-            }
-            session.req_header_mut().set_uri(uri.build().unwrap());
-            return Ok(Box::new(HttpPeer::new(addr, cfg.https, host)));
-        }
-        Err(Self::default_err())
     }
+
 
     async fn request_filter(&self, _session: &mut Session, _ctx: &mut Self::CTX) -> pingora::Result<bool> {
         let _s = _ctx.span.enter();

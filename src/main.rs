@@ -2,7 +2,7 @@ use pingora::{ prelude::*, server::configuration::ServerConf, server::Server};
 use pingora::listeners::tls::TlsSettings;
 use rustls::crypto::ring::default_provider;
 use rustls::crypto::CryptoProvider;
-use std::{path::PathBuf, sync::{Arc, RwLock}};
+use std::{path::PathBuf, sync::Arc};
 use tracing::{info, warn};
 
 use crate::config::{ConfigRecord, RouteConfig};
@@ -26,12 +26,9 @@ env_config!(
 );
 
 
-
-
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     CryptoProvider::install_default(default_provider()).ok();
-
 
     let mut server = Server::new_with_opt_and_conf(None, ServerConf{
         grace_period_seconds: Some(CFG.GRACE_PERIOD),
@@ -39,23 +36,15 @@ fn main() -> anyhow::Result<()> {
         ..Default::default()
     });
 
-
     server.bootstrap();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
-
-    let config = load_config(&CFG.CONFIG_PATH)?;
-    let shared_config: Arc<RwLock<RouteConfig>> = Arc::new(RwLock::new(config.clone()));
-    // for (port, record) in config.tcp.0.into_iter() {
-    //     // let mut service = http_proxy_service(&server.configuration, TcpGateway{record, config: todo!() });
-    //     // service.add_tcp(&format!("0.0.0.0:{}", port));
-    //     // server.add_service(service);
-    // }
-
-    runtime.block_on(async {
+    let config = runtime.block_on(async {
+        let config = load_config(&CFG.CONFIG_PATH).await.expect("Can't load config");
+        let shared_config: Arc<RouteConfig> = Arc::new(config.clone());
         for (host, dirs) in config.dir.listen.into_iter() {
             let r = dirs_router(dirs);
             tokio::spawn(async move {
@@ -71,11 +60,10 @@ fn main() -> anyhow::Result<()> {
                 }
             });
         }
+        shared_config
     });
 
-
-
-    let mut proxy = http_proxy_service(&server.configuration, HttpGateway{config: Arc::clone(&shared_config)});
+    let mut proxy = http_proxy_service(&server.configuration, HttpGateway{config: Arc::clone(&config)});
     let cert_path = format!("{}/fullchain.pem", CFG.CERT_PATH);
     let key_path = format!("{}/privkey.pem", CFG.CERT_PATH);
 
@@ -95,6 +83,6 @@ fn main() -> anyhow::Result<()> {
     server.run_forever();
 }
 
-fn load_config(path: &str) -> anyhow::Result<RouteConfig> {
-    Ok(ConfigRecord::from_file(path)?.to_route_config())
+async fn load_config(path: &str) -> anyhow::Result<RouteConfig> {
+    Ok(ConfigRecord::from_file(path)?.to_route_config().await)
 }
