@@ -20,10 +20,6 @@ env:
 jobs:
   build-and-push-docker:
     runs-on: self-hosted
-    permissions:
-      packages: write
-      contents: read
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
