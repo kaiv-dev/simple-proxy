@@ -24,7 +24,7 @@ services:
       - "./certs:/app/certs"
       - "./proxy.toml:/app/proxy.toml"
     env_file:
-      - .env
+      - .cfg
 ```
 
 ### From source

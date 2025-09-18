@@ -40,9 +40,9 @@ impl HttpParsedRecord {
             warn!("Can't parse upstream to authority: {}, skipping", upstream);
             return None;
         };
-        let maybe_addr = upstream.parse();
+        let maybe_addr = upstream.parse::<core::net::SocketAddr>();
         let addr = match maybe_addr {
-            Ok(addr) => addr,
+            Ok(addr) => SocketAddr::Inet(addr),
             Err(_) => {
                 let Some(resolver) = resolver else {
                     warn!("Can't parse upstream to socket: {upstream}, skipping");  
@@ -143,7 +143,7 @@ impl ConfigRecord {
             GenericConnector::new(TokioRuntimeProvider::default()))
                     .map(|builder| builder.build());
         let resolver = resolver.inspect_err(|e|warn!("Failed to create resolver: {e}")).ok();
-          
+        if resolver.is_some(){info!("Resolver created!");}
 
         let mut parsed_tcp = HashMap::new();
         for (k, v) in self.tcp {

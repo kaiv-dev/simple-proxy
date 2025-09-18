@@ -1,0 +1,16 @@
+name: Build latest
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  build-and-push-docker:
+    uses: ./.github/workflows/push_docker.yml
+    with:
+      channel: latest

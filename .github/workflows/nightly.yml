@@ -1,0 +1,16 @@
+name: Build nightly
+
+on:
+  push:
+    branches:
+      - nightly
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  build-and-push-docker:
+    uses: ./.github/workflows/push_docker.yml
+    with:
+      channel: nightly
